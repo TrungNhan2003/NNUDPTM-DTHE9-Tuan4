@@ -3,6 +3,7 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+let mongoose = require('mongoose');
 
 
 
@@ -17,6 +18,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+mongoose.connect('mongodb://localhost:27017/NNPTUD-S2');
+mongoose.connection.on('connected', function () {
+  console.log("da connect");
+})
 
 //localhost:3000
 app.use('/', require('./routes/index'));
