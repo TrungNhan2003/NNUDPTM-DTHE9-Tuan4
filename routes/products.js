@@ -1,96 +1,146 @@
-var express = require('express');
-var router = express.Router();
-let productModel = require('../schemas/products')
-let { ConvertTitleToSlug } = require('../utils/titleHandler')
-let { getMaxID } = require('../utils/IdHandler')
+const express = require('express');
+const router = express.Router();
+const mongoose = require('mongoose');
 
-//getall
-router.get('/', async function (req, res, next) {
-  // let queries = req.query;
-  // let titleQ = queries.title ? queries.title : '';
-  // let minPrice = queries.minPrice ? queries.minPrice : 0;
-  // let maxPrice = queries.maxPrice ? queries.maxPrice : 1E6;
-  // let page = queries.page ? queries.page : 1;
-  // let limit = queries.limit ? queries.limit : 10;
-  // console.log(queries);
-  // let result = data.filter(
-  //   function (e) {
-  //     return (!e.isDeleted) && e.title.includes(titleQ) &&
-  //       e.price >= minPrice && e.price <= maxPrice
-  //   }
-  // );
-  // result = result.splice(limit * (page - 1), limit)
-  // res.send(result);
-  let products = await productModel.find({});
-  res.send(products)
-});
-//get by ID
-router.get('/:id', async function (req, res, next) {
+/* ================== SCHEMA ================== */
+const ProductSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    slug: {
+      type: String,
+      unique: true
+    },
+    price: {
+      type: Number,
+      required: true
+    },
+    description: String
+  },
+  { timestamps: true }
+);
+
+const Product = mongoose.model('Product', ProductSchema);
+
+/* ================== HELPER ================== */
+// Chuyển tiếng Việt → slug (đúng ví dụ đề)
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+/* ================== GET PRODUCTS ================== */
+/**
+ * GET /products
+ * ?page=1&limit=5&minPrice=1000&maxPrice=5000
+ */
+router.get('/', async (req, res) => {
   try {
-    let result = await productModel.find({ _id: req.params.id });
-    if (result.length > 0) {
-      res.send(result)
-    } else {
-      res.status(404).send({
-        message: "id not found"
-      })
+    let { page = 1, limit = 10, minPrice, maxPrice } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    // Validate page & limit
+    if (isNaN(page) || isNaN(limit) || page <= 0 || limit <= 0) {
+      return res.status(400).json({
+        message: 'page và limit phải là số nguyên dương'
+      });
     }
-  } catch (error) {
-    res.status(404).send({
-      message: "id not found"
-    })
+
+    // Validate price range
+    if (minPrice && maxPrice && Number(maxPrice) < Number(minPrice)) {
+      return res.status(400).json({
+        message: 'maxPrice phải >= minPrice'
+      });
+    }
+
+    // Filter
+    const filter = {};
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
+
+    const products = await Product.find(filter)
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-
-router.post('/', async function (req, res, next) {
-  let newItem = new productModel({
-    title: req.body.title,
-    slug: ConvertTitleToSlug(req.body.title),
-    price: req.body.price,
-    description: req.body.description,
-    category: req.body.category
-  })
-  await newItem.save()
-  res.send(newItem);
-  // let newObj = {
-  //   id: (getMaxID(data) + 1) + '',
-  //   title: req.body.title,
-  //   slug: ConvertTitleToSlug(req.body.title),
-  //   price: req.body.price,
-  //   description: req.body.description,
-  //   category: req.body.category,
-  //   images: req.body.images,
-  //   creationAt: new Date(Date.now()),
-  //   updatedAt: new Date(Date.now())
-  // }
-  // data.push(newObj);
-  // console.log(data);
-  // res.send(newObj);
-  // //console.log(g);
-
-})
-router.put('/:id', async function (req, res, next) {
-  let id = req.params.id;
-  let updatedItem = await productModel.findByIdAndUpdate(
-    id, req.body, {
-    new: true
+/* ================== GET BY SLUG ================== */
+/**
+ * GET /products/slug/dien-thoai-samsung
+ */
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const product = await Product.findOne({ slug: req.params.slug });
+    if (!product) {
+      return res.status(404).json({
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-  )
-  res.send(updatedItem)
+});
 
-})
-router.delete('/:id', async function (req, res, next) {
-  let id = req.params.id;
-  let updatedItem = await productModel.findByIdAndUpdate(
-    id, {
-      isDeleted:true
-    }, {
-    new: true
+/* ================== CREATE PRODUCT ================== */
+/**
+ * POST /products
+ */
+router.post('/', async (req, res) => {
+  try {
+    const { title, price, description } = req.body;
+
+    // Validate required fields
+    if (!title || !price) {
+      return res.status(400).json({
+        message: 'title và price không được để trống'
+      });
+    }
+
+    if (isNaN(price)) {
+      return res.status(400).json({
+        message: 'price phải là số'
+      });
+    }
+
+    const slug = slugify(title);
+
+    // Check duplicate slug
+    const exist = await Product.findOne({ slug });
+    if (exist) {
+      return res.status(400).json({
+        message: 'Sản phẩm đã tồn tại'
+      });
+    }
+
+    const product = await Product.create({
+      title,
+      slug,
+      price,
+      description
+    });
+
+    res.status(201).json(product);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-  )
-  res.send(updatedItem)
-
-})
+});
 
 module.exports = router;

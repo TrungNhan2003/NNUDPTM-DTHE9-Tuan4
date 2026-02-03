@@ -3,20 +3,19 @@ let mongoose = require('mongoose')
 let productSchema = new mongoose.Schema({
     title: {
         type: String,
-        required: true
+        required: [true, "title không được rỗng"]
     },
     slug: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     price: {
         type: Number,
-        default: 0
+        required: [true, "price không được rỗng"],
+        min: [0, "price phải >= 0"]
     },
     description: {
-        type: String,
-        default: ""
-    }, description: {
         type: String,
         required: true
     },
@@ -26,8 +25,10 @@ let productSchema = new mongoose.Schema({
     },
     isDeleted: {
         type: Boolean,
-        default: false    }
+        default: false
+    }
 }, {
     timestamps: true
 })
+
 module.exports = mongoose.model('product', productSchema)

@@ -5,8 +5,6 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 let mongoose = require('mongoose');
 
-
-
 var app = express();
 
 // view engine setup
@@ -19,14 +17,22 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-mongoose.connect('mongodb://localhost:27017/NNPTUD-S2');
-mongoose.connection.on('connected', function () {
-  console.log("da connect");
-})
+// ===== CONNECT MONGODB ATLAS =====
+mongoose.connect(
+  'mongodb+srv://bbbnhan1_db_user:MGkv23eYE5L9VCKZ@cluster0.6ml8uee.mongodb.net/NNPTUD-S2?retryWrites=true&w=majority'
+);
 
-//localhost:3000
+mongoose.connection.on('connected', function () {
+  console.log("da connect MongoDB Atlas");
+});
+
+mongoose.connection.on('error', function (err) {
+  console.error("MongoDB connection error:", err);
+});
+// =================================
+
+// routes
 app.use('/', require('./routes/index'));
-//localhost:3000/users
 app.use('/users', require('./routes/users'));
 app.use('/products', require('./routes/products'));
 
@@ -37,16 +43,10 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
   res.status(err.status || 500);
-  //res.render('error');
   res.send({
     message: err.message
-  })
+  });
 });
 
 module.exports = app;
